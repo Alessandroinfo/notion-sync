@@ -8,6 +8,34 @@ type NotionBlock = BlockObjectRequest
 
 const RICH_TEXT_MAX = 2000
 
+const NOTION_LANGUAGES = new Set([
+  'abap','abc','agda','arduino','ascii art','assembly','bash','basic','bnf','c','c#','c++',
+  'clojure','coffeescript','coq','css','dart','dhall','diff','docker','ebnf','elixir','elm',
+  'erlang','f#','flow','fortran','gherkin','glsl','go','graphql','groovy','haskell','hcl',
+  'html','idris','java','javascript','json','julia','kotlin','latex','less','lisp','livescript',
+  'llvm ir','lua','makefile','markdown','markup','matlab','mathematica','mermaid','nix',
+  'notion formula','objective-c','ocaml','pascal','perl','php','plain text','powershell',
+  'prolog','protobuf','purescript','python','r','racket','reason','ruby','rust','sass','scala',
+  'scheme','scss','shell','smalltalk','solidity','sql','swift','toml','typescript','vb.net',
+  'verilog','vhdl','visual basic','webassembly','xml','yaml','java/c/c++/c#',
+])
+
+// Maps common markdown language identifiers to Notion-accepted values.
+const LANGUAGE_ALIASES: Record<string, string> = {
+  sh: 'bash', zsh: 'bash', text: 'plain text', txt: 'plain text',
+  js: 'javascript', ts: 'typescript', py: 'python', rb: 'ruby',
+  rs: 'rust', kt: 'kotlin', md: 'markdown', yml: 'yaml',
+  tf: 'hcl', dockerfile: 'docker', 'c++': 'c++', cpp: 'c++',
+  cs: 'c#', csharp: 'c#', objc: 'objective-c',
+}
+
+function normalizeLanguage(lang: string | null | undefined): string {
+  if (!lang) return 'plain text'
+  const lower = lang.toLowerCase().trim()
+  if (NOTION_LANGUAGES.has(lower)) return lower
+  return LANGUAGE_ALIASES[lower] ?? 'plain text'
+}
+
 // Splits a string into chunks of at most RICH_TEXT_MAX characters.
 function chunkString(str: string): string[] {
   const chunks: string[] = []
@@ -145,7 +173,7 @@ function convertNode(
 
     case 'code': {
       const c = node as Code
-      const lang = (c.lang as any) || 'plain text'
+      const lang = normalizeLanguage(c.lang)
       // Notion limits rich_text content to 2000 chars — split long code blocks into multiple blocks.
       return chunkString(c.value).map((chunk) => ({
         type: 'code',
