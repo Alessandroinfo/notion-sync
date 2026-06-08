@@ -6,6 +6,17 @@ import type { BlockObjectRequest } from '@notionhq/client/build/src/api-endpoint
 
 type NotionBlock = BlockObjectRequest
 
+const RICH_TEXT_MAX = 2000
+
+// Splits a string into chunks of at most RICH_TEXT_MAX characters.
+function chunkString(str: string): string[] {
+  const chunks: string[] = []
+  for (let i = 0; i < str.length; i += RICH_TEXT_MAX) {
+    chunks.push(str.slice(i, i + RICH_TEXT_MAX))
+  }
+  return chunks.length ? chunks : ['']
+}
+
 export function parseMarkdown(content: string): Root {
   return unified().use(remarkParse).use(remarkGfm).parse(content) as Root
 }
@@ -50,7 +61,9 @@ function richText(nodes: PhrasingContent[], resolveLink: (href: string) => strin
 
   for (const node of nodes) {
     if (node.type === 'text') {
-      parts.push({ type: 'text', text: { content: node.value } })
+      for (const chunk of chunkString(node.value)) {
+        parts.push({ type: 'text', text: { content: chunk } })
+      }
     } else if (node.type === 'strong') {
       for (const child of node.children) {
         if (child.type === 'text') {
@@ -132,13 +145,15 @@ function convertNode(
 
     case 'code': {
       const c = node as Code
-      return {
+      const lang = (c.lang as any) || 'plain text'
+      // Notion limits rich_text content to 2000 chars — split long code blocks into multiple blocks.
+      return chunkString(c.value).map((chunk) => ({
         type: 'code',
         code: {
-          rich_text: [{ type: 'text', text: { content: c.value } }],
-          language: (c.lang as any) || 'plain text',
+          rich_text: [{ type: 'text', text: { content: chunk } }],
+          language: lang,
         },
-      } as NotionBlock
+      })) as unknown as NotionBlock[]
     }
 
     case 'blockquote': {
