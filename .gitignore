@@ -1,3 +1,9 @@
+node_modules/
+dist/
+.env
+.notion-sync-cache.json
+*.tsbuildinfo
+
 # Created by https://www.toptal.com/developers/gitignore/api/windows,macos,webstorm+all,visualstudiocode,visualstudio,sublimetext,node,angular,react
 # Edit at https://www.toptal.com/developers/gitignore?templates=windows,macos,webstorm+all,visualstudiocode,visualstudio,sublimetext,node,angular,react
 

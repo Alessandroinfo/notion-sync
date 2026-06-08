@@ -1,0 +1,22 @@
+name: Sync docs to Notion
+
+# Trigger manuale dalla UI GitHub (Actions → Run workflow)
+on:
+  workflow_dispatch:
+    inputs:
+      doc_path:
+        description: 'Cartella dei docs nel repo (es: doc, docs/en)'
+        required: true
+        default: 'doc'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Alessandroinfo/notion-sync@main
+        with:
+          doc_path: ${{ inputs.doc_path }}
+          notion_api_key: ${{ secrets.NOTION_API_KEY }}
+          notion_page_id: ${{ secrets.NOTION_PAGE_ID }}

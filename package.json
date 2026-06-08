@@ -1,0 +1,23 @@
+{
+  "name": "notion-sync",
+  "version": "1.0.0",
+  "description": "Sync Markdown files to Notion preserving folder hierarchy and internal links",
+  "type": "module",
+  "scripts": {
+    "sync": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.15",
+    "remark-gfm": "^4.0.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

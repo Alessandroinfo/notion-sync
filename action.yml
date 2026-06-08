@@ -1,0 +1,36 @@
+name: 'Notion Sync'
+description: 'Sync Markdown files to Notion preserving folder hierarchy and internal links'
+author: 'Alessandroinfo'
+
+inputs:
+  doc_path:
+    description: 'Path to the docs folder inside the repo (e.g. "doc" or "docs/en")'
+    required: true
+    default: 'doc'
+  notion_api_key:
+    description: 'Notion integration API key'
+    required: true
+  notion_page_id:
+    description: 'UUID of the root Notion page where docs will be synced. If omitted, pages are created at the workspace root.'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci
+
+    - name: Run sync
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        NOTION_API_KEY: ${{ inputs.notion_api_key }}
+        NOTION_PAGE_ID: ${{ inputs.notion_page_id || '' }}
+      run: npx tsx src/index.ts ${{ github.workspace }}/${{ inputs.doc_path }}
