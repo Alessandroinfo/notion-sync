@@ -31,5 +31,5 @@ jobs:
         with:
           doc_path: ${{ inputs.doc_path || 'doc' }}
           notion_api_key: ${{ secrets.NOTION_API_KEY }}
-          notion_page_id: ${{ secrets.NOTION_PAGE_ID }}
+          notion_page_id: ${{ vars.NOTION_PAGE_ID }}
           mode: ${{ inputs.mode || 'mirror' }}

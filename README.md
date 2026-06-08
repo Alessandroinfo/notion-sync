@@ -195,7 +195,7 @@ jobs:
         with:
           doc_path: ${{ inputs.doc_path || 'doc' }}
           notion_api_key: ${{ secrets.NOTION_API_KEY }}
-          notion_page_id: ${{ secrets.NOTION_PAGE_ID }}
+          notion_page_id: ${{ vars.NOTION_PAGE_ID }}
           mode: ${{ inputs.mode || 'mirror' }}
 ```
 
@@ -212,18 +212,20 @@ Go to **Settings → Secrets and variables → Actions → New repository secret
 
 **With a root page:**
 
-| Secret | Description |
-|--------|-------------|
-| `NOTION_API_KEY` | Notion Internal Integration Secret |
-| `NOTION_PAGE_ID` | ID of the Notion page to use as root |
+| Type | Name | Description |
+|------|------|-------------|
+| Secret | `NOTION_API_KEY` | Notion Internal Integration Secret — keep this private |
+| Variable | `NOTION_PAGE_ID` | ID of the Notion page to use as root — not sensitive |
 
 **Without a root page:**
 
-| Secret | Description |
-|--------|-------------|
-| `NOTION_API_KEY` | Notion Internal Integration Secret |
+| Type | Name | Description |
+|------|------|-------------|
+| Secret | `NOTION_API_KEY` | Notion Internal Integration Secret |
 
 > Do not add `NOTION_PAGE_ID` — pages will be created directly in the workspace sidebar.
+
+Secrets are encrypted and never visible in logs. Variables are stored in plain text — use them for non-sensitive values like `NOTION_PAGE_ID`.
 
 ---
 
