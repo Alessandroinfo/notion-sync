@@ -24,7 +24,8 @@ export async function createPage(
   return response.id
 }
 
-export async function clearPageContent(client: Client, pageId: string): Promise<void> {
+// Deletes all child_page blocks directly under a page (one level only).
+export async function deleteChildPages(client: Client, pageId: string): Promise<void> {
   let cursor: string | undefined
 
   do {
@@ -34,10 +35,8 @@ export async function clearPageContent(client: Client, pageId: string): Promise<
       page_size: 100,
     })
 
-    // Skip child_page blocks — they are subpages managed by the sync tree,
-    // deleting them here would archive them and break the second pass.
-    const deletable = response.results.filter((b) => (b as any).type !== 'child_page')
-    await Promise.all(deletable.map((block) => client.blocks.delete({ block_id: block.id })))
+    const childPages = response.results.filter((b) => (b as any).type === 'child_page')
+    await Promise.all(childPages.map((block) => client.blocks.delete({ block_id: block.id })))
 
     cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined
   } while (cursor)
@@ -52,17 +51,4 @@ export async function appendBlocks(
     const chunk = blocks.slice(i, i + CHUNK_SIZE)
     await client.blocks.children.append({ block_id: pageId, children: chunk as any })
   }
-}
-
-export async function updatePageTitle(
-  client: Client,
-  pageId: string,
-  title: string
-): Promise<void> {
-  await client.pages.update({
-    page_id: pageId,
-    properties: {
-      title: { title: [{ type: 'text', text: { content: title } }] },
-    },
-  })
 }
