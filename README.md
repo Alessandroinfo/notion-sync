@@ -251,7 +251,7 @@ The cache is automatically invalidated (and all pages recreated) if `NOTION_PAGE
 | `**bold**` | Bold annotation |
 | `*italic*` | Italic annotation |
 | `` `inline code` `` | Code annotation |
-| `[text](./file.md)` | Mention → Notion page |
+| `[text](./file.md)` | Link to Notion page (custom label preserved) |
 | `[text](https://...)` | External link |
 | ` ```lang ``` ` | Code block (language normalised to Notion's accepted values) |
 | `> blockquote` | Quote block |

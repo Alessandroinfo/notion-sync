@@ -112,10 +112,14 @@ function richText(nodes: PhrasingContent[], resolveLink: (href: string) => strin
       const label = linkChildren.map((r) => r.text?.content ?? '').join('') || node.url
 
       if (notionPageId) {
+        // Use a text link to the Notion page URL so the custom label is preserved.
+        // mention blocks always display the page title, ignoring the link text.
         parts.push({
-          type: 'mention',
-          mention: { type: 'page', page: { id: notionPageId } },
-          plain_text: label,
+          type: 'text',
+          text: {
+            content: label,
+            link: { url: `https://www.notion.so/${notionPageId.replace(/-/g, '')}` },
+          },
         })
       } else {
         parts.push({
