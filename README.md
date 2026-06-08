@@ -265,6 +265,12 @@ Code blocks longer than 2000 characters are automatically split into consecutive
 
 ## Limitations
 
+- **Pages are deleted and recreated on every run** — Every sync removes all existing subpages and creates them fresh. As a result, the following are permanently lost on each run:
+  - Comments added directly on Notion pages
+  - Manual edits made on Notion (overwritten by the `.md` file content)
+  - Page version history
+  - Custom properties, icons, or cover images set on Notion
+  - Backlinks from external Notion pages (the page ID changes on every run, breaking any outside references)
 - **Local images** — Notion's API does not accept file uploads. Images referenced by local path (e.g. `./images/diagram.png`) are skipped. Only images with an external `https://` URL are synced.
 - **Heading depth** — Headings deeper than H3 are converted to H3, as Notion only supports three heading levels.
 - **Tables** — Markdown tables are not yet converted to Notion table blocks; they are rendered as plain paragraphs.
