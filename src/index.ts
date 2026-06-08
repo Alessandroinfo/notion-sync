@@ -9,15 +9,15 @@ function getConfig() {
   const rootPageId = process.env.NOTION_PAGE_ID
 
   const errors: string[] = []
-  if (!docPath) errors.push('Percorso docs mancante (primo argomento CLI o NOTION_DOC_PATH)')
-  if (!apiKey) errors.push('NOTION_API_KEY non impostata')
+  if (!docPath) errors.push('Docs path missing (first CLI argument or NOTION_DOC_PATH env var)')
+  if (!apiKey) errors.push('NOTION_API_KEY is not set')
 
   if (errors.length) {
-    console.error('\nErrore di configurazione:')
+    console.error('\nConfiguration error:')
     errors.forEach((e) => console.error(`  - ${e}`))
-    console.error('\nUso:')
+    console.error('\nUsage:')
     console.error('  NOTION_API_KEY=xxx [NOTION_PAGE_ID=yyy] npx tsx src/index.ts <path>')
-    console.error('\n  NOTION_PAGE_ID è opzionale: se omesso le pagine vengono create nella root del workspace.')
+    console.error('\n  NOTION_PAGE_ID is optional: if omitted, pages are created at the workspace root.')
     process.exit(1)
   }
 
@@ -39,10 +39,10 @@ async function main() {
   try {
     await sync(client, config, cache)
     saveCache(config.docPath, cache)
-    console.log('\nSync completata.')
+    console.log('\nSync completed.')
   } catch (err) {
     saveCache(config.docPath, cache)
-    console.error('\nErrore durante la sync:', err)
+    console.error('\nSync failed:', err)
     process.exit(1)
   }
 }

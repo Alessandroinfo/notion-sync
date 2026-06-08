@@ -1,10 +1,10 @@
 # notion-sync
 
-Strumento CLI e GitHub Action per sincronizzare una cartella di file Markdown su Notion, rispettando la struttura delle directory e convertendo i link interni tra file in riferimenti tra pagine Notion.
+CLI tool and GitHub Action to sync a folder of Markdown files to Notion, preserving the directory hierarchy and converting internal links between files into Notion page references.
 
-## Come funziona
+## How it works
 
-Data una struttura di file:
+Given a file structure:
 
 ```
 doc/
@@ -16,11 +16,11 @@ doc/
     └── setup.md
 ```
 
-Viene replicata su Notion come gerarchia di pagine.
+It is replicated on Notion as a hierarchy of pages.
 
-**Con `NOTION_PAGE_ID` — tutto isolato sotto una pagina specifica:**
+**With `NOTION_PAGE_ID` — everything isolated under a specific page:**
 ```
-La tua pagina (NOTION_PAGE_ID)
+Your page (NOTION_PAGE_ID)
 ├── index
 ├── architecture/
 │   ├── overview
@@ -29,7 +29,7 @@ La tua pagina (NOTION_PAGE_ID)
     └── setup
 ```
 
-**Senza `NOTION_PAGE_ID` — pagine create nella root del workspace:**
+**Without `NOTION_PAGE_ID` — pages created at the workspace root:**
 ```
 Workspace
 ├── index
@@ -40,49 +40,47 @@ Workspace
     └── setup
 ```
 
-I link interni tra file (`[Vedi overview](../architecture/overview.md)`) vengono convertiti in link cliccabili alle rispettive pagine Notion.
+Internal links between files (`[See overview](../architecture/overview.md)`) are converted into clickable links to the corresponding Notion pages.
 
-### Logica di sincronizzazione
+### Sync logic
 
-La sync avviene in due passaggi:
+The sync runs in two passes:
 
-1. **Creazione pagine** — tutte le pagine vengono create su Notion replicando la gerarchia, prima di scrivere qualsiasi contenuto
-2. **Sync contenuto** — ogni file viene convertito in blocchi Notion; i link interni vengono risolti usando gli ID delle pagine create nel passo precedente
+1. **Page creation** — all pages are created on Notion replicating the hierarchy, before writing any content
+2. **Content sync** — each file is converted into Notion blocks; internal links are resolved using the page IDs from the first pass
 
-Alla prima esecuzione le pagine vengono create. Alle esecuzioni successive il contenuto viene **svuotato e riscritto** — le pagine restano le stesse (stesso ID Notion), quindi i link interni rimangono validi.
+On the first run pages are created. On subsequent runs the content is **cleared and rewritten** — the pages remain the same (same Notion ID), so internal links stay valid.
 
-Una cache locale (`.notion-sync-cache.json`) nella cartella dei docs tiene traccia della corrispondenza tra path dei file e ID delle pagine Notion, così le pagine non vengono ricreate ad ogni sync.
-
----
-
-## Prerequisiti
-
-### 1. Creare un'integrazione Notion
-
-1. Vai su [notion.so/my-integrations](https://www.notion.so/my-integrations)
-2. Clicca **New integration**
-3. Assegna un nome (es. `notion-sync`) e seleziona il workspace
-4. Sotto **Capabilities** abilita: *Read content*, *Update content*, *Insert content*
-5. Copia l'**Internal Integration Secret** → sarà `NOTION_API_KEY`
-
-### 2. Condividere l'accesso con l'integrazione
-
-Hai due modalità, scegli quella che preferisci:
-
-**Modalità A — pagina isolata (con `NOTION_PAGE_ID`)**
-Tutta la documentazione viene creata come sottopagine di una pagina Notion specifica. Utile per tenere i docs separati dal resto del workspace.
-1. Apri la pagina Notion che vuoi usare come root
-2. Clicca **...** (menu in alto a destra) → **Connections** → aggiungi la tua integrazione
-3. Copia l'ID dalla URL: `https://notion.so/Il-Titolo-**<PAGE_ID>**` → la parte finale (32 caratteri esadecimali)
-
-**Modalità B — workspace root (senza `NOTION_PAGE_ID`)**
-Le pagine di primo livello vengono create direttamente nella sidebar del workspace, senza nessuna pagina contenitore.
-1. Vai su **Settings** del workspace → **Connections**
-2. Aggiungi l'integrazione a livello workspace
+A local cache (`.notion-sync-cache.json`) in the docs folder tracks the mapping between file paths and Notion page IDs, so pages are not recreated on every sync.
 
 ---
 
-## Uso in locale
+## Prerequisites
+
+### 1. Create a Notion integration
+
+1. Go to [notion.so/my-integrations](https://www.notion.so/my-integrations)
+2. Click **New integration**
+3. Give it a name (e.g. `notion-sync`) and select your workspace
+4. Under **Capabilities** enable: *Read content*, *Update content*, *Insert content*
+5. Copy the **Internal Integration Secret** → this will be `NOTION_API_KEY`
+
+### 2. Share access with the integration
+
+**Mode A — specific root page (with `NOTION_PAGE_ID`):**
+Use this to keep docs isolated from the rest of the workspace, or when sharing the workspace with others.
+1. Open the Notion page you want to use as root
+2. Click **...** (top-right menu) → **Connections** → add your integration
+3. Copy the ID from the URL: `https://notion.so/Page-Title-**<PAGE_ID>**` → the last part (32 hex characters)
+
+**Mode B — workspace root (without `NOTION_PAGE_ID`):**
+Top-level pages will appear directly in the workspace sidebar with no container page.
+1. Go to workspace **Settings** → **Connections**
+2. Add the integration at workspace level
+
+---
+
+## Local usage
 
 ```bash
 git clone https://github.com/Alessandroinfo/notion-sync.git
@@ -90,24 +88,24 @@ cd notion-sync
 npm install
 ```
 
-**Modalità A — tutto sotto una pagina specifica:**
+**Mode A — everything under a specific page:**
 ```bash
 NOTION_API_KEY=secret_xxx \
 NOTION_PAGE_ID=abc123 \
-npx tsx src/index.ts /percorso/della/tua/cartella/docs
+npx tsx src/index.ts /path/to/your/docs
 ```
 
-**Modalità B — pagine nella root del workspace:**
+**Mode B — pages at the workspace root:**
 ```bash
 NOTION_API_KEY=secret_xxx \
-npx tsx src/index.ts /percorso/della/tua/cartella/docs
+npx tsx src/index.ts /path/to/your/docs
 ```
 
 ---
 
-## Uso come GitHub Action
+## Usage as a GitHub Action
 
-Aggiungi questo workflow nel repo che contiene i tuoi docs:
+Add this workflow to the repo that contains your docs:
 
 ```yaml
 # .github/workflows/notion-sync.yml
@@ -117,7 +115,7 @@ on:
   workflow_dispatch:
     inputs:
       doc_path:
-        description: 'Cartella dei docs nel repo (es: doc, docs/en)'
+        description: 'Docs folder in the repo (e.g. doc, docs/en)'
         required: true
         default: 'doc'
 
@@ -131,67 +129,67 @@ jobs:
         with:
           doc_path: ${{ inputs.doc_path }}
           notion_api_key: ${{ secrets.NOTION_API_KEY }}
-          notion_page_id: ${{ secrets.NOTION_PAGE_ID }}  # ometti per usare la root del workspace
+          notion_page_id: ${{ secrets.NOTION_PAGE_ID }}  # omit to use workspace root
 ```
 
-Il workflow si attiva manualmente da **Actions → Sync docs to Notion → Run workflow**.
+The workflow is triggered manually from **Actions → Sync docs to Notion → Run workflow**.
 
-### Configurare i Secrets
+### Configuring Secrets
 
-Nel repo che contiene i docs vai su **Settings → Secrets and variables → Actions → New repository secret**.
+In the repo that contains the docs go to **Settings → Secrets and variables → Actions → New repository secret**.
 
-**Modalità A — tutto sotto una pagina specifica:**
+**Mode A — everything under a specific page:**
 
-| Secret | Descrizione |
+| Secret | Description |
 |--------|-------------|
-| `NOTION_API_KEY` | Internal Integration Secret di Notion |
-| `NOTION_PAGE_ID` | ID della pagina Notion da usare come root |
+| `NOTION_API_KEY` | Notion Internal Integration Secret |
+| `NOTION_PAGE_ID` | ID of the Notion page to use as root |
 
-**Modalità B — pagine nella root del workspace:**
+**Mode B — pages at the workspace root:**
 
-| Secret | Descrizione |
+| Secret | Description |
 |--------|-------------|
-| `NOTION_API_KEY` | Internal Integration Secret di Notion |
+| `NOTION_API_KEY` | Notion Internal Integration Secret |
 
-> Non aggiungere `NOTION_PAGE_ID`. Le pagine verranno create direttamente nel workspace.
+> Do not add `NOTION_PAGE_ID`. Pages will be created directly in the workspace.
 
 ---
 
-## Variabili d'ambiente
+## Environment variables
 
-| Variabile | Obbligatoria | Descrizione |
-|-----------|:---:|-------------|
-| `NOTION_API_KEY` | ✅ | Internal Integration Secret di Notion |
-| `NOTION_PAGE_ID` | ❌ | ID della pagina Notion sotto cui isolare i docs. Se omesso, le pagine vengono create nella root del workspace |
-| `NOTION_DOC_PATH` | ❌ | Percorso della cartella docs. Alternativa al primo argomento CLI |
+| Variable | Required | Description |
+|----------|:--------:|-------------|
+| `NOTION_API_KEY` | ✅ | Notion Internal Integration Secret |
+| `NOTION_PAGE_ID` | ❌ | ID of the Notion page to sync under. If omitted, pages are created at the workspace root |
+| `NOTION_DOC_PATH` | ❌ | Path to the docs folder. Alternative to passing it as a CLI argument |
 
-> **Regola pratica:** usa `NOTION_PAGE_ID` se vuoi tenere i docs separati dal resto del workspace o se condividi il workspace con altre persone. Omettilo se vuoi che le pagine appaiano direttamente nella sidebar.
+> **Rule of thumb:** use `NOTION_PAGE_ID` if you want to keep docs separate from the rest of the workspace or if you share the workspace with others. Omit it if you want pages to appear directly in the sidebar.
 
 ---
 
 ## Cache
 
-Il file `.notion-sync-cache.json` viene salvato nella cartella dei docs. Mappa ogni path relativo al suo Notion page ID. Va aggiunto al `.gitignore` del progetto che contiene i docs:
+The `.notion-sync-cache.json` file is saved in the docs folder. It maps each relative path to its Notion page ID. Add it to the `.gitignore` of the project that contains the docs:
 
 ```
 .notion-sync-cache.json
 ```
 
-Se si cambia `NOTION_PAGE_ID`, la cache viene invalidata automaticamente e tutte le pagine vengono ricreate.
+If `NOTION_PAGE_ID` changes, the cache is automatically invalidated and all pages are recreated.
 
 ---
 
-## Elementi Markdown supportati
+## Supported Markdown elements
 
-| Elemento | Blocco Notion |
-|----------|---------------|
+| Element | Notion block |
+|---------|-------------|
 | `# H1` `## H2` `### H3` | Heading 1/2/3 |
-| Paragrafo | Paragraph |
-| `**grassetto**` `*corsivo*` `` `inline code` `` | Annotazioni rich text |
-| `[testo](./file.md)` | Mention → pagina Notion |
-| `[testo](https://...)` | Link esterno |
-| ` ```codice``` ` | Code block |
+| Paragraph | Paragraph |
+| `**bold**` `*italic*` `` `inline code` `` | Rich text annotations |
+| `[text](./file.md)` | Mention → Notion page |
+| `[text](https://...)` | External link |
+| ` ```code``` ` | Code block |
 | `>` Blockquote | Quote |
-| `- lista` / `1. lista` | Bulleted / Numbered list |
+| `- list` / `1. list` | Bulleted / Numbered list |
 | `---` | Divider |
-| `![alt](https://...)` | Image (solo URL esterni) |
+| `![alt](https://...)` | Image (external URLs only) |

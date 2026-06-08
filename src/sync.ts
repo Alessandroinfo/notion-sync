@@ -69,20 +69,20 @@ async function syncNode(
 }
 
 export async function sync(client: Client, config: SyncConfig, cache: Cache): Promise<void> {
-  console.log(`\nScansione: ${config.docPath}`)
+  console.log(`\nScanning: ${config.docPath}`)
   const tree = buildTree(config.docPath)
 
   if (tree.length === 0) {
-    console.log('Nessun file .md trovato.')
+    console.log('No .md files found.')
     return
   }
 
   // First pass: ensure all pages exist so links can resolve correctly
-  console.log('\nPass 1/2 — creazione pagine...')
+  console.log('\nPass 1/2 — creating pages...')
   await ensureAllPages(client, tree, config.rootPageId, cache)
 
   // Second pass: sync content with resolved links
-  console.log('\nPass 2/2 — sincronizzazione contenuto...')
+  console.log('\nPass 2/2 — syncing content...')
   for (const node of tree) {
     await syncNode(client, node, config.rootPageId, cache, config.docPath)
   }

@@ -1,11 +1,11 @@
 name: Sync docs to Notion
 
-# Trigger manuale dalla UI GitHub (Actions → Run workflow)
+# Manual trigger from the GitHub UI (Actions → Run workflow)
 on:
   workflow_dispatch:
     inputs:
       doc_path:
-        description: 'Cartella dei docs nel repo (es: doc, docs/en)'
+        description: 'Docs folder in the repo (e.g. doc, docs/en)'
         required: true
         default: 'doc'
 
