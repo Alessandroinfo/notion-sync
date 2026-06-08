@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { dirname, resolve, join } from 'node:path'
+import { dirname, normalize, join } from 'node:path'
 import type { Client } from '@notionhq/client'
 import type { Cache, FileNode, SyncConfig } from './types.js'
 import { buildTree } from './fs.js'
@@ -14,11 +14,7 @@ function resolveRelativePath(sourceRelativePath: string, href: string): string |
   if (!hrefNoAnchor) return null
 
   const sourceDir = dirname(sourceRelativePath)
-  const resolved = resolve(join(sourceDir, hrefNoAnchor))
-    .replace(/\\/g, '/')
-    .replace(/^\//, '')
-
-  return resolved
+  return normalize(join(sourceDir, hrefNoAnchor)).replace(/\\/g, '/')
 }
 
 function getTitleForNode(node: FileNode): string {
