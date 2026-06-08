@@ -10,14 +10,34 @@ export function parseMarkdown(content: string): Root {
   return unified().use(remarkParse).use(remarkGfm).parse(content) as Root
 }
 
+// Returns the text content of the first H1 in the AST, or null if not found.
+export function extractTitle(ast: Root): string | null {
+  for (const node of ast.children) {
+    if (node.type === 'heading' && (node as Heading).depth === 1) {
+      return (node as Heading).children
+        .filter((c) => c.type === 'text')
+        .map((c) => (c as any).value as string)
+        .join('')
+        .trim() || null
+    }
+  }
+  return null
+}
+
 // resolveLink: called with the raw href from the .md file, returns a Notion page ID or null
 export function mdastToNotionBlocks(
   ast: Root,
-  resolveLink: (href: string) => string | null
+  resolveLink: (href: string) => string | null,
+  opts: { skipFirstH1?: boolean } = {}
 ): NotionBlock[] {
   const blocks: NotionBlock[] = []
+  let firstH1Skipped = false
 
   for (const node of ast.children) {
+    if (opts.skipFirstH1 && !firstH1Skipped && node.type === 'heading' && (node as Heading).depth === 1) {
+      firstH1Skipped = true
+      continue
+    }
     const converted = convertNode(node as Content, resolveLink)
     if (converted) blocks.push(...(Array.isArray(converted) ? converted : [converted]))
   }

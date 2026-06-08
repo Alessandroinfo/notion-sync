@@ -34,9 +34,10 @@ export async function clearPageContent(client: Client, pageId: string): Promise<
       page_size: 100,
     })
 
-    await Promise.all(
-      response.results.map((block) => client.blocks.delete({ block_id: block.id }))
-    )
+    // Skip child_page blocks — they are subpages managed by the sync tree,
+    // deleting them here would archive them and break the second pass.
+    const deletable = response.results.filter((b) => (b as any).type !== 'child_page')
+    await Promise.all(deletable.map((block) => client.blocks.delete({ block_id: block.id })))
 
     cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined
   } while (cursor)

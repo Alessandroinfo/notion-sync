@@ -3,7 +3,7 @@ import { dirname, resolve, join } from 'node:path'
 import type { Client } from '@notionhq/client'
 import type { Cache, FileNode, SyncConfig } from './types.js'
 import { buildTree } from './fs.js'
-import { parseMarkdown, mdastToNotionBlocks } from './markdown.js'
+import { parseMarkdown, mdastToNotionBlocks, extractTitle } from './markdown.js'
 import { createPage, clearPageContent, appendBlocks, updatePageTitle } from './notion.js'
 
 // Resolves a relative markdown link (href) from a source file to a target relative path
@@ -34,7 +34,16 @@ async function syncNode(
   const cacheKey = node.relativePath
   let pageId = cache.pages[cacheKey]
 
-  const title = node.name
+  // For files, derive title from the first H1; fall back to the filename.
+  // For directories, always use the folder name.
+  let title = node.name
+  let ast = null
+
+  if (node.type === 'file') {
+    const content = readFileSync(node.absolutePath, 'utf-8')
+    ast = parseMarkdown(content)
+    title = extractTitle(ast) ?? node.name
+  }
 
   if (!pageId) {
     console.log(`  [create] ${node.relativePath}`)
@@ -46,17 +55,15 @@ async function syncNode(
     await clearPageContent(client, pageId)
   }
 
-  if (node.type === 'file') {
-    const content = readFileSync(node.absolutePath, 'utf-8')
-    const ast = parseMarkdown(content)
-
+  if (node.type === 'file' && ast) {
     const resolveLink = (href: string): string | null => {
       const targetRelPath = resolveRelativePath(node.relativePath, href)
       if (!targetRelPath) return null
       return cache.pages[targetRelPath] ?? null
     }
 
-    const blocks = mdastToNotionBlocks(ast, resolveLink)
+    // Skip the first H1 — it is already used as the page title.
+    const blocks = mdastToNotionBlocks(ast, resolveLink, { skipFirstH1: true })
     if (blocks.length > 0) {
       await appendBlocks(client, pageId, blocks)
     }
@@ -88,6 +95,15 @@ export async function sync(client: Client, config: SyncConfig, cache: Cache): Pr
   }
 }
 
+function getTitleForNode(node: FileNode): string {
+  if (node.type === 'file') {
+    const content = readFileSync(node.absolutePath, 'utf-8')
+    const ast = parseMarkdown(content)
+    return extractTitle(ast) ?? node.name
+  }
+  return node.name
+}
+
 async function ensureAllPages(
   client: Client,
   nodes: FileNode[],
@@ -97,7 +113,8 @@ async function ensureAllPages(
   for (const node of nodes) {
     const cacheKey = node.relativePath
     if (!cache.pages[cacheKey]) {
-      const pageId = await createPage(client, parentPageId, node.name)
+      const title = getTitleForNode(node)
+      const pageId = await createPage(client, parentPageId, title)
       cache.pages[cacheKey] = pageId
     }
     if (node.children.length > 0) {
