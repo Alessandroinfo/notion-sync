@@ -1,7 +1,10 @@
 name: Sync docs to Notion
 
-# Manual trigger from the GitHub UI (Actions → Run workflow)
+# Runs automatically when a commit message contains [sync-notion].
+# Can also be triggered manually from the GitHub UI (Actions → Run workflow).
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       doc_path:
@@ -15,13 +18,18 @@ on:
 
 jobs:
   sync:
+    # On push: only run if the commit message contains [sync-notion]
+    # On manual trigger: always run
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, '[sync-notion]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: Alessandroinfo/notion-sync@main
         with:
-          doc_path: ${{ inputs.doc_path }}
+          doc_path: ${{ inputs.doc_path || 'doc' }}
           notion_api_key: ${{ secrets.NOTION_API_KEY }}
           notion_page_id: ${{ secrets.NOTION_PAGE_ID }}
-          mode: ${{ inputs.mode }}
+          mode: ${{ inputs.mode || 'mirror' }}

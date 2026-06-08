@@ -160,13 +160,17 @@ npx tsx src/index.ts /path/to/docs
 
 ## Usage as a GitHub Action
 
-Add this workflow to the repo that contains your docs and trigger it manually whenever you want to sync.
+Add this workflow to the repo that contains your docs.
 
 ```yaml
 # .github/workflows/notion-sync.yml
 name: Sync docs to Notion
 
+# Runs automatically when a commit message contains [sync-notion].
+# Can also be triggered manually from the GitHub UI.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       doc_path:
@@ -180,19 +184,27 @@ on:
 
 jobs:
   sync:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.head_commit.message, '[sync-notion]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: Alessandroinfo/notion-sync@main
         with:
-          doc_path: ${{ inputs.doc_path }}
+          doc_path: ${{ inputs.doc_path || 'doc' }}
           notion_api_key: ${{ secrets.NOTION_API_KEY }}
           notion_page_id: ${{ secrets.NOTION_PAGE_ID }}
-          mode: ${{ inputs.mode }}
+          mode: ${{ inputs.mode || 'mirror' }}
 ```
 
-Trigger from **Actions → Sync docs to Notion → Run workflow**.
+**To trigger via commit message**, include `[sync-notion]` anywhere in the commit:
+```bash
+git commit -m "update architecture docs [sync-notion]"
+```
+
+**To trigger manually**, go to **Actions → Sync docs to Notion → Run workflow**.
 
 ### Configuring secrets
 
