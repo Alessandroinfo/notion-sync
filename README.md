@@ -16,10 +16,22 @@ doc/
     └── setup.md
 ```
 
-Viene replicata su Notion come gerarchia di pagine:
+Viene replicata su Notion come gerarchia di pagine.
 
+**Con `NOTION_PAGE_ID` — tutto isolato sotto una pagina specifica:**
 ```
-[Pagina root o workspace]
+La tua pagina (NOTION_PAGE_ID)
+├── index
+├── architecture/
+│   ├── overview
+│   └── decisions
+└── guides/
+    └── setup
+```
+
+**Senza `NOTION_PAGE_ID` — pagine create nella root del workspace:**
+```
+Workspace
 ├── index
 ├── architecture/
 │   ├── overview
@@ -55,21 +67,18 @@ Una cache locale (`.notion-sync-cache.json`) nella cartella dei docs tiene tracc
 
 ### 2. Condividere l'accesso con l'integrazione
 
-**Se usi una pagina root specifica:**
-Apri la pagina Notion → **...** (menu in alto a destra) → **Connections** → aggiungi la tua integrazione.
+Hai due modalità, scegli quella che preferisci:
 
-**Se vuoi creare le pagine nella root del workspace:**
-Vai su **Settings** del workspace → **Connections** → aggiungi l'integrazione a livello workspace.
+**Modalità A — pagina isolata (con `NOTION_PAGE_ID`)**
+Tutta la documentazione viene creata come sottopagine di una pagina Notion specifica. Utile per tenere i docs separati dal resto del workspace.
+1. Apri la pagina Notion che vuoi usare come root
+2. Clicca **...** (menu in alto a destra) → **Connections** → aggiungi la tua integrazione
+3. Copia l'ID dalla URL: `https://notion.so/Il-Titolo-**<PAGE_ID>**` → la parte finale (32 caratteri esadecimali)
 
-### 3. Ottenere il Page ID (opzionale)
-
-Se vuoi sincronizzare sotto una pagina specifica, copia il suo ID dall'URL:
-
-```
-https://notion.so/Il-Titolo-<PAGE_ID>
-```
-
-L'ID è la parte finale (32 caratteri esadecimali, con o senza trattini).
+**Modalità B — workspace root (senza `NOTION_PAGE_ID`)**
+Le pagine di primo livello vengono create direttamente nella sidebar del workspace, senza nessuna pagina contenitore.
+1. Vai su **Settings** del workspace → **Connections**
+2. Aggiungi l'integrazione a livello workspace
 
 ---
 
@@ -81,14 +90,14 @@ cd notion-sync
 npm install
 ```
 
-**Con pagina root specifica:**
+**Modalità A — tutto sotto una pagina specifica:**
 ```bash
 NOTION_API_KEY=secret_xxx \
 NOTION_PAGE_ID=abc123 \
 npx tsx src/index.ts /percorso/della/tua/cartella/docs
 ```
 
-**Nella root del workspace (senza pagina root):**
+**Modalità B — pagine nella root del workspace:**
 ```bash
 NOTION_API_KEY=secret_xxx \
 npx tsx src/index.ts /percorso/della/tua/cartella/docs
@@ -122,19 +131,29 @@ jobs:
         with:
           doc_path: ${{ inputs.doc_path }}
           notion_api_key: ${{ secrets.NOTION_API_KEY }}
-          notion_page_id: ${{ secrets.NOTION_PAGE_ID }}  # opzionale
+          notion_page_id: ${{ secrets.NOTION_PAGE_ID }}  # ometti per usare la root del workspace
 ```
 
 Il workflow si attiva manualmente da **Actions → Sync docs to Notion → Run workflow**.
 
 ### Configurare i Secrets
 
-Nel repo che contiene i docs vai su **Settings → Secrets and variables → Actions → New repository secret**:
+Nel repo che contiene i docs vai su **Settings → Secrets and variables → Actions → New repository secret**.
 
-| Secret | Obbligatorio | Descrizione |
-|--------|:---:|-------------|
-| `NOTION_API_KEY` | ✅ | Internal Integration Secret di Notion |
-| `NOTION_PAGE_ID` | ❌ | ID della pagina root. Se omesso, le pagine vengono create nella root del workspace |
+**Modalità A — tutto sotto una pagina specifica:**
+
+| Secret | Descrizione |
+|--------|-------------|
+| `NOTION_API_KEY` | Internal Integration Secret di Notion |
+| `NOTION_PAGE_ID` | ID della pagina Notion da usare come root |
+
+**Modalità B — pagine nella root del workspace:**
+
+| Secret | Descrizione |
+|--------|-------------|
+| `NOTION_API_KEY` | Internal Integration Secret di Notion |
+
+> Non aggiungere `NOTION_PAGE_ID`. Le pagine verranno create direttamente nel workspace.
 
 ---
 
@@ -143,8 +162,10 @@ Nel repo che contiene i docs vai su **Settings → Secrets and variables → Act
 | Variabile | Obbligatoria | Descrizione |
 |-----------|:---:|-------------|
 | `NOTION_API_KEY` | ✅ | Internal Integration Secret di Notion |
-| `NOTION_PAGE_ID` | ❌ | ID della pagina Notion sotto cui sincronizzare. Se omesso, le pagine vengono create nella root del workspace |
+| `NOTION_PAGE_ID` | ❌ | ID della pagina Notion sotto cui isolare i docs. Se omesso, le pagine vengono create nella root del workspace |
 | `NOTION_DOC_PATH` | ❌ | Percorso della cartella docs. Alternativa al primo argomento CLI |
+
+> **Regola pratica:** usa `NOTION_PAGE_ID` se vuoi tenere i docs separati dal resto del workspace o se condividi il workspace con altre persone. Omettilo se vuoi che le pagine appaiano direttamente nella sidebar.
 
 ---
 
