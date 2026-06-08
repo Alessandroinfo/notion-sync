@@ -41,7 +41,7 @@ A local cache file (`.notion-sync-cache.json`) stored in the docs folder tracks 
 
 ### `mirror` (default)
 
-Replicates the filesystem 1:1. Every directory becomes a Notion page and every `.md` file becomes a subpage inside it. The title of each page is taken from the first `# H1` heading in the file, falling back to the filename if no H1 is found.
+Replicates the filesystem 1:1. Every directory becomes a Notion page and every `.md` file becomes a subpage inside it. The title of each page is the **filename** (without the `.md` extension). The full file content, including any `# H1`, is written into the page body.
 
 ```
 docs/

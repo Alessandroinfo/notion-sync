@@ -17,14 +17,9 @@ function resolveRelativePath(sourceRelativePath: string, href: string): string |
 }
 
 function getTitleForNode(node: FileNode, mode: 'mirror' | 'graph'): string {
-  // In graph mode the title comes from buildGraphTree (already set as node.name).
-  // In mirror mode we derive it from the first H1, falling back to the filename.
-  if (mode === 'graph') return node.name
-  if (node.type === 'file') {
-    const content = readFileSync(node.absolutePath, 'utf-8')
-    const ast = parseMarkdown(content)
-    return extractTitle(ast) ?? node.name
-  }
+  // mirror: use the filename as-is (node.name is already the basename without .md)
+  // graph:  node.name is set by buildGraphTree from the first H1
+  if (mode === 'mirror') return node.name
   return node.name
 }
 
@@ -67,9 +62,9 @@ async function syncContent(
         return cache.pages[targetRelPath] ?? null
       }
 
-      // mirror: skip first H1 (used as page title)
-      // graph: node.name is already the H1 title, so skip it too
-      const blocks = mdastToNotionBlocks(ast, resolveLink, { skipFirstH1: true })
+      // graph: node.name is the H1 title — skip it to avoid duplication
+      // mirror: title is the filename — keep the H1 in the page content
+      const blocks = mdastToNotionBlocks(ast, resolveLink, { skipFirstH1: mode === 'graph' })
       if (blocks.length > 0) {
         console.log(`  [content] ${node.relativePath}`)
         await appendBlocks(client, pageId, blocks)
