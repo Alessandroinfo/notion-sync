@@ -1,79 +1,86 @@
 # notion-sync
 
-CLI tool and GitHub Action to sync a folder of Markdown files to Notion, preserving the directory hierarchy and converting internal links between files into Notion page references.
+CLI tool and GitHub Action to sync a folder of Markdown files to Notion, preserving directory hierarchy and converting internal links into Notion page references.
+
+---
+
+## Table of contents
+
+- [How it works](#how-it-works)
+- [Sync modes](#sync-modes)
+  - [mirror](#mirror-default)
+  - [graph](#graph)
+- [Prerequisites](#prerequisites)
+- [Local usage](#local-usage)
+- [Usage as a GitHub Action](#usage-as-a-github-action)
+- [Environment variables](#environment-variables)
+- [Cache](#cache)
+- [Supported Markdown elements](#supported-markdown-elements)
+- [Limitations](#limitations)
+- [Project structure](#project-structure)
+
+---
 
 ## How it works
 
-Given a file structure:
+Given a folder of Markdown files, notion-sync creates a matching hierarchy of Notion pages and fills each page with the converted content.
 
-```
-doc/
-├── index.md
-├── architecture/
-│   ├── overview.md
-│   └── decisions.md
-└── guides/
-    └── setup.md
-```
+Every run follows three steps:
 
-It is replicated on Notion as a hierarchy of pages.
+1. **Remove** — all existing subpages under the root are deleted from Notion
+2. **Create** — all pages are recreated fresh, building the chosen hierarchy
+3. **Populate** — content is appended to each page; internal `.md` links are resolved to Notion page mentions
 
-**With `NOTION_PAGE_ID` — everything isolated under a specific page:**
-```
-Your page (NOTION_PAGE_ID)
-├── index
-├── architecture/
-│   ├── overview
-│   └── decisions
-└── guides/
-    └── setup
-```
+Because pages are always deleted and recreated, every sync reflects the exact current state of your files — modified, renamed, or deleted files are handled automatically.
 
-**Without `NOTION_PAGE_ID` — pages created at the workspace root:**
-```
-Workspace
-├── index
-├── architecture/
-│   ├── overview
-│   └── decisions
-└── guides/
-    └── setup
-```
+A local cache file (`.notion-sync-cache.json`) stored in the docs folder tracks the mapping between file paths and Notion page IDs across runs.
 
-Internal links between files (`[See overview](../architecture/overview.md)`) are converted into clickable links to the corresponding Notion pages.
+---
 
 ## Sync modes
 
 ### `mirror` (default)
-Replicates the filesystem 1:1. Every folder becomes a Notion page, every `.md` file becomes a subpage. The hierarchy matches your directory structure exactly.
+
+Replicates the filesystem 1:1. Every directory becomes a Notion page and every `.md` file becomes a subpage inside it. The title of each page is taken from the first `# H1` heading in the file, falling back to the filename if no H1 is found.
 
 ```
-doc/architecture/overview.md → Notion: root / architecture / overview
+docs/
+├── index.md              →  root / index
+├── architecture/
+│   ├── overview.md       →  root / architecture / overview
+│   └── decisions.md      →  root / architecture / decisions
+└── guides/
+    └── setup.md          →  root / guides / setup
 ```
+
+Use `mirror` when the directory structure already reflects how you want the docs organised on Notion.
+
+---
 
 ### `graph`
-Builds the Notion hierarchy from internal links between pages, not from the filesystem. Each page's title comes from its first H1. A page becomes a child of the first page that links to it.
+
+Builds the Notion hierarchy from the internal links between pages, ignoring the filesystem structure. Each page's title is taken from its first `# H1`. A page becomes a child of the first page that links to it.
 
 ```
-index.md links to → architecture.md links to → decisions.md
-Notion:  index / architecture / decisions
+index.md  →  links to architecture.md  →  links to decisions.md
+
+Notion result:
+root / index / architecture / decisions
 ```
 
-Edge cases handled:
-- **Multiple parents** — first-parent wins; subsequent links become Notion mentions
-- **Circular links** — second occurrence stays as mention, no loop
-- **Orphans** (no incoming links) — placed at root with a warning
-- **Broken links** — skipped with a warning, sync continues
-- **Links outside docs folder** — ignored
+Root candidates are files with no incoming links, ranked by number of outgoing links descending (most connected first). If an `index.md` exists at the top level it is always preferred as root.
 
-### Sync logic (both modes)
+**Edge cases handled in `graph` mode:**
 
-Every run:
-1. **Remove** all existing subpages under the root
-2. **Create** all pages fresh, replicating the chosen hierarchy
-3. **Populate** content, resolving internal links to Notion page mentions
+| Situation | Behaviour |
+|-----------|-----------|
+| A file is linked by multiple parents | First parent wins; subsequent links become Notion page mentions |
+| Circular links (`a.md` ↔ `b.md`) | First occurrence becomes parent–child; second becomes a mention |
+| Orphan files (no incoming links, not a root) | Placed at the top level with a console warning |
+| Broken links (target file does not exist) | Skipped with a console warning; sync continues |
+| Links that escape the docs folder (`../../x.md`) | Ignored silently |
 
-A local cache (`.notion-sync-cache.json`) in the docs folder tracks the mapping between file paths and Notion page IDs.
+Use `graph` when your files are written as a wiki — an `index.md` page linking to sub-topics, each sub-topic linking to detail pages — and you want Notion to mirror that logical structure rather than the folder layout.
 
 ---
 
@@ -85,18 +92,24 @@ A local cache (`.notion-sync-cache.json`) in the docs folder tracks the mapping 
 2. Click **New integration**
 3. Give it a name (e.g. `notion-sync`) and select your workspace
 4. Under **Capabilities** enable: *Read content*, *Update content*, *Insert content*
-5. Copy the **Internal Integration Secret** → this will be `NOTION_API_KEY`
+5. Copy the **Internal Integration Secret** — this will be your `NOTION_API_KEY`
 
 ### 2. Share access with the integration
 
-**Mode A — specific root page (with `NOTION_PAGE_ID`):**
-Use this to keep docs isolated from the rest of the workspace, or when sharing the workspace with others.
+**With a root page (`NOTION_PAGE_ID` set):**
+All docs will be created as subpages of one specific Notion page. Recommended when the workspace is shared with others or you want the docs isolated.
+
 1. Open the Notion page you want to use as root
 2. Click **...** (top-right menu) → **Connections** → add your integration
-3. Copy the ID from the URL: `https://notion.so/Page-Title-**<PAGE_ID>**` → the last part (32 hex characters)
+3. Copy the page ID from the URL:
+   ```
+   https://notion.so/Page-Title-<PAGE_ID>
+   ```
+   The ID is the last segment (32 hex characters, with or without hyphens)
 
-**Mode B — workspace root (without `NOTION_PAGE_ID`):**
-Top-level pages will appear directly in the workspace sidebar with no container page.
+**Without a root page (`NOTION_PAGE_ID` omitted):**
+Top-level pages appear directly in the workspace sidebar.
+
 1. Go to workspace **Settings** → **Connections**
 2. Add the integration at workspace level
 
@@ -110,36 +123,44 @@ cd notion-sync
 npm install
 ```
 
-**Mode A — everything under a specific page:**
+**Sync under a specific Notion page:**
 ```bash
 NOTION_API_KEY=secret_xxx \
 NOTION_PAGE_ID=abc123 \
 npx tsx src/index.ts /path/to/your/docs
 ```
 
-**Mode B — pages at the workspace root:**
+**Sync to the workspace root:**
 ```bash
 NOTION_API_KEY=secret_xxx \
 npx tsx src/index.ts /path/to/your/docs
 ```
 
-**Choose sync mode with `--mode` flag or env var:**
+**Choose sync mode:**
 ```bash
 # mirror mode (default) — filesystem hierarchy
 npx tsx src/index.ts --mode mirror /path/to/docs
 
-# graph mode — hierarchy from internal links
+# graph mode — hierarchy derived from internal links
 npx tsx src/index.ts --mode graph /path/to/docs
 
 # via env var (useful in CI)
 NOTION_SYNC_MODE=graph npx tsx src/index.ts /path/to/docs
 ```
 
+All options can be combined:
+```bash
+NOTION_API_KEY=secret_xxx \
+NOTION_PAGE_ID=abc123 \
+NOTION_SYNC_MODE=graph \
+npx tsx src/index.ts /path/to/docs
+```
+
 ---
 
 ## Usage as a GitHub Action
 
-Add this workflow to the repo that contains your docs:
+Add this workflow to the repo that contains your docs and trigger it manually whenever you want to sync.
 
 ```yaml
 # .github/workflows/notion-sync.yml
@@ -152,6 +173,10 @@ on:
         description: 'Docs folder in the repo (e.g. doc, docs/en)'
         required: true
         default: 'doc'
+      mode:
+        description: 'Sync mode: mirror (filesystem) or graph (link-based hierarchy)'
+        required: false
+        default: 'mirror'
 
 jobs:
   sync:
@@ -163,69 +188,106 @@ jobs:
         with:
           doc_path: ${{ inputs.doc_path }}
           notion_api_key: ${{ secrets.NOTION_API_KEY }}
-          notion_page_id: ${{ secrets.NOTION_PAGE_ID }}  # omit to use workspace root
-          mode: mirror  # or graph
+          notion_page_id: ${{ secrets.NOTION_PAGE_ID }}
+          mode: ${{ inputs.mode }}
 ```
 
-The workflow is triggered manually from **Actions → Sync docs to Notion → Run workflow**.
+Trigger from **Actions → Sync docs to Notion → Run workflow**.
 
-### Configuring Secrets
+### Configuring secrets
 
-In the repo that contains the docs go to **Settings → Secrets and variables → Actions → New repository secret**.
+Go to **Settings → Secrets and variables → Actions → New repository secret** in the repo that contains the docs.
 
-**Mode A — everything under a specific page:**
+**With a root page:**
 
 | Secret | Description |
 |--------|-------------|
 | `NOTION_API_KEY` | Notion Internal Integration Secret |
 | `NOTION_PAGE_ID` | ID of the Notion page to use as root |
 
-**Mode B — pages at the workspace root:**
+**Without a root page:**
 
 | Secret | Description |
 |--------|-------------|
 | `NOTION_API_KEY` | Notion Internal Integration Secret |
 
-> Do not add `NOTION_PAGE_ID`. Pages will be created directly in the workspace.
+> Do not add `NOTION_PAGE_ID` — pages will be created directly in the workspace sidebar.
 
 ---
 
 ## Environment variables
 
-| Variable | Required | Description |
-|----------|:--------:|-------------|
-| `NOTION_API_KEY` | ✅ | Notion Internal Integration Secret |
-| `NOTION_PAGE_ID` | ❌ | ID of the Notion page to sync under. If omitted, pages are created at the workspace root |
-| `NOTION_DOC_PATH` | ❌ | Path to the docs folder. Alternative to passing it as a CLI argument |
-| `NOTION_SYNC_MODE` | ❌ | `mirror` or `graph`. Default: `mirror`. Overrides `--mode` flag |
+| Variable | Required | CLI equivalent | Description |
+|----------|:--------:|----------------|-------------|
+| `NOTION_API_KEY` | ✅ | — | Notion Internal Integration Secret |
+| `NOTION_PAGE_ID` | ❌ | — | Notion page ID to sync under. If omitted, pages go to the workspace root |
+| `NOTION_DOC_PATH` | ❌ | first positional argument | Path to the docs folder |
+| `NOTION_SYNC_MODE` | ❌ | `--mode mirror\|graph` | Sync mode. Default: `mirror` |
 
-> **Rule of thumb:** use `NOTION_PAGE_ID` if you want to keep docs separate from the rest of the workspace or if you share the workspace with others. Omit it if you want pages to appear directly in the sidebar.
+When both the env var and the CLI flag are provided, the env var takes precedence (useful for overriding defaults in CI).
 
 ---
 
 ## Cache
 
-The `.notion-sync-cache.json` file is saved in the docs folder. It maps each relative path to its Notion page ID. Add it to the `.gitignore` of the project that contains the docs:
+`.notion-sync-cache.json` is written to the docs folder after each successful sync. It maps every relative file path to its Notion page ID so that the "remove existing pages" step in the next run targets the right pages.
+
+Add it to the `.gitignore` of the project that contains the docs:
 
 ```
 .notion-sync-cache.json
 ```
 
-If `NOTION_PAGE_ID` changes, the cache is automatically invalidated and all pages are recreated.
+The cache is automatically invalidated (and all pages recreated) if `NOTION_PAGE_ID` changes.
 
 ---
 
 ## Supported Markdown elements
 
-| Element | Notion block |
-|---------|-------------|
-| `# H1` `## H2` `### H3` | Heading 1/2/3 |
-| Paragraph | Paragraph |
-| `**bold**` `*italic*` `` `inline code` `` | Rich text annotations |
+| Markdown | Notion block |
+|----------|-------------|
+| `# H1` / `## H2` / `### H3` | Heading 1 / 2 / 3 |
+| Paragraph text | Paragraph |
+| `**bold**` | Bold annotation |
+| `*italic*` | Italic annotation |
+| `` `inline code` `` | Code annotation |
 | `[text](./file.md)` | Mention → Notion page |
 | `[text](https://...)` | External link |
-| ` ```code``` ` | Code block |
-| `>` Blockquote | Quote |
-| `- list` / `1. list` | Bulleted / Numbered list |
+| ` ```lang ``` ` | Code block (language normalised to Notion's accepted values) |
+| `> blockquote` | Quote block |
+| `- item` / `1. item` | Bulleted / Numbered list |
 | `---` | Divider |
-| `![alt](https://...)` | Image (external URLs only) |
+| `![alt](https://url)` | Image block (external URLs only) |
+
+Code blocks longer than 2000 characters are automatically split into consecutive blocks to comply with Notion's API limit.
+
+---
+
+## Limitations
+
+- **Local images** — Notion's API does not accept file uploads. Images referenced by local path (e.g. `./images/diagram.png`) are skipped. Only images with an external `https://` URL are synced.
+- **Heading depth** — Headings deeper than H3 are converted to H3, as Notion only supports three heading levels.
+- **Tables** — Markdown tables are not yet converted to Notion table blocks; they are rendered as plain paragraphs.
+- **HTML blocks** — Raw HTML inside `.md` files is ignored.
+- **graph mode + workspace root** — If `NOTION_PAGE_ID` is not set and mode is `graph`, orphan pages are created at the workspace root but cannot be automatically cleaned up on subsequent runs (there is no way to list all workspace-level pages via the API without a database). Use `NOTION_PAGE_ID` with `graph` mode for reliable cleanup.
+
+---
+
+## Project structure
+
+```
+notion-sync/
+├── src/
+│   ├── index.ts      Entry point — reads config from CLI args and env vars
+│   ├── sync.ts       Orchestrates the three-pass sync (remove → create → populate)
+│   ├── graph.ts      Builds the page tree from internal links (graph mode only)
+│   ├── fs.ts         Scans the docs folder and builds a flat FileNode tree
+│   ├── markdown.ts   Parses Markdown AST and converts nodes to Notion blocks
+│   ├── notion.ts     Thin wrapper around the Notion API client
+│   ├── cache.ts      Reads and writes .notion-sync-cache.json
+│   └── types.ts      Shared TypeScript types
+├── action.yml        GitHub Action definition
+└── .github/
+    └── workflows/
+        └── example-sync.yml   Ready-to-use workflow to copy into your repo
+```
