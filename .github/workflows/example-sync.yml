@@ -8,6 +8,10 @@ on:
         description: 'Docs folder in the repo (e.g. doc, docs/en)'
         required: true
         default: 'doc'
+      mode:
+        description: 'Sync mode: mirror (filesystem hierarchy) or graph (link-based hierarchy)'
+        required: false
+        default: 'mirror'
 
 jobs:
   sync:
@@ -20,3 +24,4 @@ jobs:
           doc_path: ${{ inputs.doc_path }}
           notion_api_key: ${{ secrets.NOTION_API_KEY }}
           notion_page_id: ${{ secrets.NOTION_PAGE_ID }}
+          mode: ${{ inputs.mode }}

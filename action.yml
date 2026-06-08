@@ -14,6 +14,10 @@ inputs:
     description: 'UUID of the root Notion page where docs will be synced. If omitted, pages are created at the workspace root.'
     required: false
     default: ''
+  mode:
+    description: 'Sync mode: "mirror" replicates the filesystem hierarchy, "graph" builds the hierarchy from internal links.'
+    required: false
+    default: 'mirror'
 
 runs:
   using: 'composite'
@@ -33,4 +37,5 @@ runs:
       env:
         NOTION_API_KEY: ${{ inputs.notion_api_key }}
         NOTION_PAGE_ID: ${{ inputs.notion_page_id || '' }}
+        NOTION_SYNC_MODE: ${{ inputs.mode }}
       run: npx tsx src/index.ts ${{ github.workspace }}/${{ inputs.doc_path }}

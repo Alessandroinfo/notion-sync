@@ -1,7 +1,10 @@
+export type SyncMode = 'mirror' | 'graph'
+
 export interface SyncConfig {
   docPath: string
   apiKey: string
   rootPageId: string | null // null = workspace root
+  mode: SyncMode
 }
 
 export interface Cache {

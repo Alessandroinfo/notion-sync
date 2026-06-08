@@ -42,16 +42,38 @@ Workspace
 
 Internal links between files (`[See overview](../architecture/overview.md)`) are converted into clickable links to the corresponding Notion pages.
 
-### Sync logic
+## Sync modes
 
-The sync runs in two passes:
+### `mirror` (default)
+Replicates the filesystem 1:1. Every folder becomes a Notion page, every `.md` file becomes a subpage. The hierarchy matches your directory structure exactly.
 
-1. **Page creation** — all pages are created on Notion replicating the hierarchy, before writing any content
-2. **Content sync** — each file is converted into Notion blocks; internal links are resolved using the page IDs from the first pass
+```
+doc/architecture/overview.md → Notion: root / architecture / overview
+```
 
-On the first run pages are created. On subsequent runs the content is **cleared and rewritten** — the pages remain the same (same Notion ID), so internal links stay valid.
+### `graph`
+Builds the Notion hierarchy from internal links between pages, not from the filesystem. Each page's title comes from its first H1. A page becomes a child of the first page that links to it.
 
-A local cache (`.notion-sync-cache.json`) in the docs folder tracks the mapping between file paths and Notion page IDs, so pages are not recreated on every sync.
+```
+index.md links to → architecture.md links to → decisions.md
+Notion:  index / architecture / decisions
+```
+
+Edge cases handled:
+- **Multiple parents** — first-parent wins; subsequent links become Notion mentions
+- **Circular links** — second occurrence stays as mention, no loop
+- **Orphans** (no incoming links) — placed at root with a warning
+- **Broken links** — skipped with a warning, sync continues
+- **Links outside docs folder** — ignored
+
+### Sync logic (both modes)
+
+Every run:
+1. **Remove** all existing subpages under the root
+2. **Create** all pages fresh, replicating the chosen hierarchy
+3. **Populate** content, resolving internal links to Notion page mentions
+
+A local cache (`.notion-sync-cache.json`) in the docs folder tracks the mapping between file paths and Notion page IDs.
 
 ---
 
@@ -101,6 +123,18 @@ NOTION_API_KEY=secret_xxx \
 npx tsx src/index.ts /path/to/your/docs
 ```
 
+**Choose sync mode with `--mode` flag or env var:**
+```bash
+# mirror mode (default) — filesystem hierarchy
+npx tsx src/index.ts --mode mirror /path/to/docs
+
+# graph mode — hierarchy from internal links
+npx tsx src/index.ts --mode graph /path/to/docs
+
+# via env var (useful in CI)
+NOTION_SYNC_MODE=graph npx tsx src/index.ts /path/to/docs
+```
+
 ---
 
 ## Usage as a GitHub Action
@@ -130,6 +164,7 @@ jobs:
           doc_path: ${{ inputs.doc_path }}
           notion_api_key: ${{ secrets.NOTION_API_KEY }}
           notion_page_id: ${{ secrets.NOTION_PAGE_ID }}  # omit to use workspace root
+          mode: mirror  # or graph
 ```
 
 The workflow is triggered manually from **Actions → Sync docs to Notion → Run workflow**.
@@ -162,6 +197,7 @@ In the repo that contains the docs go to **Settings → Secrets and variables �
 | `NOTION_API_KEY` | ✅ | Notion Internal Integration Secret |
 | `NOTION_PAGE_ID` | ❌ | ID of the Notion page to sync under. If omitted, pages are created at the workspace root |
 | `NOTION_DOC_PATH` | ❌ | Path to the docs folder. Alternative to passing it as a CLI argument |
+| `NOTION_SYNC_MODE` | ❌ | `mirror` or `graph`. Default: `mirror`. Overrides `--mode` flag |
 
 > **Rule of thumb:** use `NOTION_PAGE_ID` if you want to keep docs separate from the rest of the workspace or if you share the workspace with others. Omit it if you want pages to appear directly in the sidebar.
 
