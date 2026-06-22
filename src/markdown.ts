@@ -1,7 +1,7 @@
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
-import type { Root, Content, Heading, Paragraph, Code, List, ListItem, BlockContent, PhrasingContent, Link, Image } from 'mdast'
+import type { Root, Content, Heading, Paragraph, Code, List, ListItem, BlockContent, PhrasingContent, Link, Image, Table, TableRow, TableCell } from 'mdast'
 import type { BlockObjectRequest } from '@notionhq/client/build/src/api-endpoints.js'
 
 type NotionBlock = BlockObjectRequest
@@ -214,6 +214,31 @@ function convertNode(
         } as unknown as NotionBlock)
       }
       return blocks
+    }
+
+    case 'table': {
+      const table = node as Table
+      const rows = table.children as TableRow[]
+      const columnCount = rows[0]?.children.length ?? 0
+      if (columnCount === 0) return null
+
+      const tableBlock: any = {
+        type: 'table',
+        table: {
+          table_width: columnCount,
+          has_column_header: true,
+          has_row_header: false,
+          children: rows.map((row) => ({
+            type: 'table_row',
+            table_row: {
+              cells: (row.children as TableCell[]).map((cell) =>
+                richText(cell.children as PhrasingContent[], resolveLink)
+              ),
+            },
+          })),
+        },
+      }
+      return tableBlock as NotionBlock
     }
 
     case 'thematicBreak':
