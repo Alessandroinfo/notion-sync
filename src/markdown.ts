@@ -63,25 +63,63 @@ export function extractTitle(ast: Root): string | null {
   return null
 }
 
+// Returns the image of a paragraph that contains only that image: the one
+// case converted to an image block (images inside text stay a placeholder).
+function standaloneImage(node: Content): Image | null {
+  if (node.type !== 'paragraph') return null
+  const children = (node as Paragraph).children
+  return children.length === 1 && children[0].type === 'image' ? (children[0] as Image) : null
+}
+
+// URLs of the standalone images that point to local files, in document order.
+export function collectLocalImages(ast: Root): string[] {
+  const urls: string[] = []
+  for (const node of ast.children) {
+    const img = standaloneImage(node as Content)
+    if (img && !/^[a-z][a-z0-9+.-]*:/i.test(img.url) && !urls.includes(img.url)) urls.push(img.url)
+  }
+  return urls
+}
+
 // resolveLink: called with the raw href from the .md file, returns a Notion page ID or null
+// resolveImage: called with the raw url of a local image, returns its file upload ID or null
 export function mdastToNotionBlocks(
   ast: Root,
   resolveLink: (href: string) => string | null,
-  opts: { skipFirstH1?: boolean } = {}
+  opts: { skipFirstH1?: boolean; resolveImage?: (url: string) => string | null } = {}
 ): NotionBlock[] {
   const blocks: NotionBlock[] = []
   let firstH1Skipped = false
+  const resolveImage = opts.resolveImage ?? (() => null)
 
   for (const node of ast.children) {
     if (opts.skipFirstH1 && !firstH1Skipped && node.type === 'heading' && (node as Heading).depth === 1) {
       firstH1Skipped = true
       continue
     }
-    const converted = convertNode(node as Content, resolveLink)
+    const converted = convertNode(node as Content, resolveLink, resolveImage)
     if (converted) blocks.push(...(Array.isArray(converted) ? converted : [converted]))
   }
 
   return blocks
+}
+
+// Replaces image blocks that reference file uploads with their text
+// placeholder, for a retry when Notion refuses an uploaded image.
+export function withoutUploadedImages(blocks: NotionBlock[]): NotionBlock[] {
+  return blocks.map((block) => {
+    const image = (block as any).image
+    if ((block as any).type !== 'image' || image?.type !== 'file_upload') return block
+    const label = image.caption?.[0]?.text?.content || 'image'
+    return {
+      type: 'paragraph',
+      paragraph: { rich_text: [{ type: 'text', text: { content: `[image: ${label}]` } }] },
+    } as NotionBlock
+  })
+}
+
+function imageCaption(img: Image): any[] {
+  return img.alt ? [{ type: 'text', text: { content: img.alt.slice(0, RICH_TEXT_MAX) } }] : []
 }
 
 function richText(nodes: PhrasingContent[], resolveLink: (href: string) => string | null): any[] {
@@ -138,7 +176,8 @@ function richText(nodes: PhrasingContent[], resolveLink: (href: string) => strin
 
 function convertNode(
   node: Content,
-  resolveLink: (href: string) => string | null
+  resolveLink: (href: string) => string | null,
+  resolveImage: (url: string) => string | null
 ): NotionBlock | NotionBlock[] | null {
   switch (node.type) {
     case 'heading': {
@@ -156,17 +195,22 @@ function convertNode(
 
     case 'paragraph': {
       const p = node as Paragraph
-      // A paragraph with a single image becomes an image block
-      if (
-        p.children.length === 1 &&
-        p.children[0].type === 'image'
-      ) {
-        const img = p.children[0] as Image
+      // A paragraph with a single image becomes an image block: external URLs
+      // are linked, local files are referenced through their file upload.
+      const img = standaloneImage(p)
+      if (img) {
         if (img.url.startsWith('http')) {
           return {
             type: 'image',
-            image: { type: 'external', external: { url: img.url } },
+            image: { type: 'external', external: { url: img.url }, caption: imageCaption(img) },
           } as NotionBlock
+        }
+        const uploadId = resolveImage(img.url)
+        if (uploadId) {
+          return {
+            type: 'image',
+            image: { type: 'file_upload', file_upload: { id: uploadId }, caption: imageCaption(img) },
+          } as unknown as NotionBlock
         }
       }
       return {

@@ -271,9 +271,13 @@ The cache is automatically invalidated (and all pages recreated) if `NOTION_PAGE
 | `> blockquote` | Quote block |
 | `- item` / `1. item` | Bulleted / Numbered list |
 | `---` | Divider |
-| `![alt](https://url)` | Image block (external URLs only) |
+| `![alt](https://url)` | Image block linking the external URL, alt text as caption |
+| `![alt](./diagram.svg)` | Image block with the file uploaded to Notion, alt text as caption |
+| GFM table | Table block (first row as header) |
 
 Code blocks longer than 2000 characters are automatically split into consecutive blocks to comply with Notion's API limit.
+
+Local images are uploaded with Notion's File Upload API, at no extra cost: PNG, JPEG, GIF, SVG and WebP, up to 5 MiB per file on free workspaces (20 MiB on paid ones). Only an image alone in its paragraph becomes an image block; paths are resolved from the Markdown file and must stay inside the docs folder. Each file is uploaded once per run and reused by every page that shows it. A missing, unsupported or refused image never fails the sync: the page keeps a `[image: alt]` placeholder and the log explains why.
 
 ---
 
@@ -285,9 +289,8 @@ Code blocks longer than 2000 characters are automatically split into consecutive
   - Page version history
   - Custom properties, icons, or cover images set on Notion
   - Backlinks from external Notion pages (the page ID changes on every run, breaking any outside references)
-- **Local images** — Notion's API does not accept file uploads. Images referenced by local path (e.g. `./images/diagram.png`) are skipped. Only images with an external `https://` URL are synced.
+- **Images inside text** — An image in the middle of a sentence or inside a list item becomes a `[image: alt]` placeholder; only an image alone in its paragraph becomes an image block.
 - **Heading depth** — Headings deeper than H3 are converted to H3, as Notion only supports three heading levels.
-- **Tables** — Markdown tables are not yet converted to Notion table blocks; they are rendered as plain paragraphs.
 - **HTML blocks** — Raw HTML inside `.md` files is ignored.
 - **graph mode + workspace root** — If `NOTION_PAGE_ID` is not set and mode is `graph`, orphan pages are created at the workspace root but cannot be automatically cleaned up on subsequent runs (there is no way to list all workspace-level pages via the API without a database). Use `NOTION_PAGE_ID` with `graph` mode for reliable cleanup.
 
@@ -303,7 +306,7 @@ notion-sync/
 │   ├── graph.ts      Builds the page tree from internal links (graph mode only)
 │   ├── fs.ts         Scans the docs folder and builds a flat FileNode tree
 │   ├── markdown.ts   Parses Markdown AST and converts nodes to Notion blocks
-│   ├── notion.ts     Thin wrapper around the Notion API client
+│   ├── notion.ts     Notion API calls: pages, blocks and file uploads
 │   ├── cache.ts      Reads and writes .notion-sync-cache.json
 │   └── types.ts      Shared TypeScript types
 ├── action.yml        GitHub Action definition
