@@ -4,7 +4,9 @@
   "description": "Sync Markdown files to Notion preserving folder hierarchy and internal links",
   "type": "module",
   "scripts": {
-    "sync": "tsx src/index.ts"
+    "sync": "tsx src/index.ts",
+    "test": "node --import tsx --test \"src/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@notionhq/client": "^2.2.15",
