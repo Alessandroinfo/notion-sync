@@ -121,6 +121,8 @@ Top-level pages appear directly in the workspace sidebar.
 git clone https://github.com/Alessandroinfo/notion-sync.git
 cd notion-sync
 npm install
+npm test            # Markdown conversion and request-splitting tests (no Notion key needed)
+npm run typecheck
 ```
 
 **Sync under a specific Notion page:**
@@ -262,20 +264,23 @@ The cache is automatically invalidated (and all pages recreated) if `NOTION_PAGE
 |----------|-------------|
 | `# H1` / `## H2` / `### H3` | Heading 1 / 2 / 3 |
 | Paragraph text | Paragraph |
-| `**bold**` | Bold annotation |
-| `*italic*` | Italic annotation |
+| `**bold**` / `*italic*` / `~~strike~~` | Bold / italic / strikethrough annotation, nestable (bold text can contain code or links) |
 | `` `inline code` `` | Code annotation |
+| Line break (two trailing spaces or `\`) | Line break inside the same block |
 | `[text](./file.md)` | Link to Notion page (custom label preserved) |
 | `[text](https://...)` | External link |
 | ` ```lang ``` ` | Code block (language normalised to Notion's accepted values) |
-| `> blockquote` | Quote block |
-| `- item` / `1. item` | Bulleted / Numbered list |
+| `> blockquote` | Quote block; paragraphs and lists after the first paragraph are nested inside it |
+| `- item` / `1. item` | Bulleted / Numbered list; nested lists, code blocks, tables and extra paragraphs become children of the item, at any depth |
+| `- [ ] task` / `- [x] task` | To-do block (unchecked / checked) |
 | `---` | Divider |
 | `![alt](https://url)` | Image block linking the external URL, alt text as caption |
 | `![alt](./diagram.svg)` | Image block with the file uploaded to Notion, alt text as caption |
 | GFM table | Table block (first row as header) |
 
 Code blocks longer than 2000 characters are automatically split into consecutive blocks to comply with Notion's API limit.
+
+Nested content is appended within Notion's request limits (two levels of nesting, 100 blocks per array, 1000 block elements per request): deeper levels and longer lists or tables are appended in follow-up requests, in order. Rich text longer than 100 elements is compacted instead of failing the page.
 
 Local images are uploaded with Notion's File Upload API, at no extra cost: PNG, JPEG, GIF, SVG and WebP, up to 5 MiB per file on free workspaces (20 MiB on paid ones). Only an image alone in its paragraph becomes an image block; paths are resolved from the Markdown file and must stay inside the docs folder. Each file is uploaded once per run and reused by every page that shows it. A missing, unsupported or refused image never fails the sync: the page keeps a `[image: alt]` placeholder and the log explains why.
 
@@ -289,9 +294,10 @@ Local images are uploaded with Notion's File Upload API, at no extra cost: PNG, 
   - Page version history
   - Custom properties, icons, or cover images set on Notion
   - Backlinks from external Notion pages (the page ID changes on every run, breaking any outside references)
-- **Images inside text** — An image in the middle of a sentence or inside a list item becomes a `[image: alt]` placeholder; only an image alone in its paragraph becomes an image block.
+- **Images inside text** — An image in the middle of a sentence becomes a `[image: alt]` placeholder; only an image alone in its paragraph (also inside a list item or quote) becomes an image block.
 - **Heading depth** — Headings deeper than H3 are converted to H3, as Notion only supports three heading levels.
-- **HTML blocks** — Raw HTML inside `.md` files is ignored.
+- **HTML** — Raw HTML inside `.md` files, block or inline, is ignored.
+- **Anchors** — Links to a section of another file (`./page.md#section`) open the page, not the section.
 - **graph mode + workspace root** — If `NOTION_PAGE_ID` is not set and mode is `graph`, orphan pages are created at the workspace root but cannot be automatically cleaned up on subsequent runs (there is no way to list all workspace-level pages via the API without a database). Use `NOTION_PAGE_ID` with `graph` mode for reliable cleanup.
 
 ---
@@ -306,7 +312,8 @@ notion-sync/
 │   ├── graph.ts      Builds the page tree from internal links (graph mode only)
 │   ├── fs.ts         Scans the docs folder and builds a flat FileNode tree
 │   ├── markdown.ts   Parses Markdown AST and converts nodes to Notion blocks
-│   ├── notion.ts     Notion API calls: pages, blocks and file uploads
+│   ├── notion.ts     Notion API calls: pages, blocks (within request limits) and file uploads
+│   ├── *.test.ts     Tests (node:test), run with npm test
 │   ├── cache.ts      Reads and writes .notion-sync-cache.json
 │   └── types.ts      Shared TypeScript types
 ├── action.yml        GitHub Action definition
