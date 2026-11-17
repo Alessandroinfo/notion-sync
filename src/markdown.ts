@@ -1,7 +1,7 @@
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
-import type { Root, Content, Heading, Paragraph, Code, List, ListItem, BlockContent, PhrasingContent, Link, Image, Table, TableRow, TableCell } from 'mdast'
+import type { Root, Content, Heading, Paragraph, Code, List, ListItem, PhrasingContent, Image, Table, TableRow, TableCell } from 'mdast'
 import type { BlockObjectRequest } from '@notionhq/client/build/src/api-endpoints.js'
 
 type NotionBlock = BlockObjectRequest
@@ -71,13 +71,18 @@ function standaloneImage(node: Content): Image | null {
   return children.length === 1 && children[0].type === 'image' ? (children[0] as Image) : null
 }
 
-// URLs of the standalone images that point to local files, in document order.
+// URLs of the standalone images that point to local files, in document order,
+// including those nested in list items and blockquotes.
 export function collectLocalImages(ast: Root): string[] {
   const urls: string[] = []
-  for (const node of ast.children) {
-    const img = standaloneImage(node as Content)
-    if (img && !/^[a-z][a-z0-9+.-]*:/i.test(img.url) && !urls.includes(img.url)) urls.push(img.url)
+  const visit = (nodes: Content[]) => {
+    for (const node of nodes) {
+      const img = standaloneImage(node)
+      if (img && !/^[a-z][a-z0-9+.-]*:/i.test(img.url) && !urls.includes(img.url)) urls.push(img.url)
+      if (node.type !== 'paragraph' && 'children' in node) visit(node.children as Content[])
+    }
   }
+  visit(ast.children as Content[])
   return urls
 }
 
@@ -105,16 +110,22 @@ export function mdastToNotionBlocks(
 }
 
 // Replaces image blocks that reference file uploads with their text
-// placeholder, for a retry when Notion refuses an uploaded image.
+// placeholder, for a retry when Notion refuses an uploaded image. Nested
+// blocks (list items, quotes) are handled too.
 export function withoutUploadedImages(blocks: NotionBlock[]): NotionBlock[] {
   return blocks.map((block) => {
     const image = (block as any).image
-    if ((block as any).type !== 'image' || image?.type !== 'file_upload') return block
-    const label = image.caption?.[0]?.text?.content || 'image'
-    return {
-      type: 'paragraph',
-      paragraph: { rich_text: [{ type: 'text', text: { content: `[image: ${label}]` } }] },
-    } as NotionBlock
+    if ((block as any).type === 'image' && image?.type === 'file_upload') {
+      const label = image.caption?.[0]?.text?.content || 'image'
+      return {
+        type: 'paragraph',
+        paragraph: { rich_text: [{ type: 'text', text: { content: `[image: ${label}]` } }] },
+      } as NotionBlock
+    }
+    const type = (block as any).type as string
+    const body = (block as any)[type]
+    if (!Array.isArray(body?.children)) return block
+    return { ...block, [type]: { ...body, children: withoutUploadedImages(body.children) } } as NotionBlock
   })
 }
 
@@ -122,56 +133,141 @@ function imageCaption(img: Image): any[] {
   return img.alt ? [{ type: 'text', text: { content: img.alt.slice(0, RICH_TEXT_MAX) } }] : []
 }
 
-function richText(nodes: PhrasingContent[], resolveLink: (href: string) => string | null): any[] {
+// Notion accepts at most 100 elements in a rich text array.
+const RICH_TEXT_MAX_ITEMS = 100
+
+interface Annotations {
+  bold?: boolean
+  italic?: boolean
+  strikethrough?: boolean
+  code?: boolean
+}
+
+function textPart(content: string, annotations: Annotations, link: string | null): any {
+  const part: any = { type: 'text', text: link ? { content, link: { url: link } } : { content } }
+  if (Object.keys(annotations).length > 0) part.annotations = { ...annotations }
+  return part
+}
+
+function sameStyle(a: any, b: any): boolean {
+  return (
+    JSON.stringify(a.annotations ?? {}) === JSON.stringify(b.annotations ?? {}) &&
+    (a.text.link?.url ?? null) === (b.text.link?.url ?? null)
+  )
+}
+
+// Keeps a rich text array within Notion's 100-element limit: adjacent parts
+// with the same style are merged first; if that is not enough, the tail is
+// kept as plain text in the last element instead of failing the whole page.
+function limitRichText(parts: any[]): any[] {
+  if (parts.length <= RICH_TEXT_MAX_ITEMS) return parts
+
+  const merged: any[] = []
+  for (const part of parts) {
+    const last = merged[merged.length - 1]
+    if (last && sameStyle(last, part) && last.text.content.length + part.text.content.length <= RICH_TEXT_MAX) {
+      merged[merged.length - 1] = { ...last, text: { ...last.text, content: last.text.content + part.text.content } }
+    } else {
+      merged.push(part)
+    }
+  }
+  if (merged.length <= RICH_TEXT_MAX_ITEMS) return merged
+
+  const head = merged.slice(0, RICH_TEXT_MAX_ITEMS - 1)
+  const tail = merged.slice(RICH_TEXT_MAX_ITEMS - 1).map((p) => p.text.content).join('')
+  return [...head, { type: 'text', text: { content: tail.slice(0, RICH_TEXT_MAX) } }]
+}
+
+// Converts inline Markdown to rich text parts. Formatting nests (a bold span
+// can contain code or a link, a link label can be bold), so every child
+// inherits the annotations and the link of its ancestors.
+function inlineParts(
+  nodes: PhrasingContent[],
+  resolveLink: (href: string) => string | null,
+  annotations: Annotations,
+  link: string | null
+): any[] {
   const parts: any[] = []
 
   for (const node of nodes) {
-    if (node.type === 'text') {
-      for (const chunk of chunkString(node.value)) {
-        parts.push({ type: 'text', text: { content: chunk } })
+    switch (node.type) {
+      case 'text':
+        for (const chunk of chunkString(node.value)) parts.push(textPart(chunk, annotations, link))
+        break
+      case 'inlineCode':
+        for (const chunk of chunkString(node.value)) parts.push(textPart(chunk, { ...annotations, code: true }, link))
+        break
+      case 'strong':
+        parts.push(...inlineParts(node.children as PhrasingContent[], resolveLink, { ...annotations, bold: true }, link))
+        break
+      case 'emphasis':
+        parts.push(...inlineParts(node.children as PhrasingContent[], resolveLink, { ...annotations, italic: true }, link))
+        break
+      case 'delete':
+        parts.push(...inlineParts(node.children as PhrasingContent[], resolveLink, { ...annotations, strikethrough: true }, link))
+        break
+      case 'break':
+        parts.push(textPart('\n', annotations, link))
+        break
+      case 'link': {
+        // Internal .md links point to the Notion page through a text link, so
+        // the custom label is preserved (mentions always show the page title).
+        const notionPageId = resolveLink(node.url)
+        const url = notionPageId
+          ? `https://www.notion.so/${notionPageId.replace(/-/g, '')}`
+          : node.url.startsWith('http') ? node.url : null
+        const label = inlineParts(node.children as PhrasingContent[], resolveLink, annotations, url)
+        const hasText = label.some((p) => p.text.content.length > 0)
+        parts.push(...(hasText ? label : [textPart(node.url, annotations, url)]))
+        break
       }
-    } else if (node.type === 'strong') {
-      for (const child of node.children) {
-        if (child.type === 'text') {
-          parts.push({ type: 'text', text: { content: child.value }, annotations: { bold: true } })
-        }
-      }
-    } else if (node.type === 'emphasis') {
-      for (const child of node.children) {
-        if (child.type === 'text') {
-          parts.push({ type: 'text', text: { content: child.value }, annotations: { italic: true } })
-        }
-      }
-    } else if (node.type === 'inlineCode') {
-      parts.push({ type: 'text', text: { content: node.value }, annotations: { code: true } })
-    } else if (node.type === 'link') {
-      const notionPageId = resolveLink(node.url)
-      const linkChildren = richText(node.children as PhrasingContent[], resolveLink)
-      const label = linkChildren.map((r) => r.text?.content ?? '').join('') || node.url
-
-      if (notionPageId) {
-        // Use a text link to the Notion page URL so the custom label is preserved.
-        // mention blocks always display the page title, ignoring the link text.
-        parts.push({
-          type: 'text',
-          text: {
-            content: label,
-            link: { url: `https://www.notion.so/${notionPageId.replace(/-/g, '')}` },
-          },
-        })
-      } else {
-        parts.push({
-          type: 'text',
-          text: { content: label, link: node.url.startsWith('http') ? { url: node.url } : null },
-        })
-      }
-    } else if (node.type === 'image') {
-      // Images become plain text with the alt and url since Notion blocks require separate handling
-      parts.push({ type: 'text', text: { content: `[image: ${node.alt || node.url}]` } })
+      case 'image':
+        // Inline images stay a text placeholder; only standalone images become image blocks.
+        parts.push(textPart(`[image: ${node.alt || node.url}]`, annotations, link))
+        break
+      default:
+        // Inline HTML and other unsupported nodes are skipped.
+        break
     }
   }
 
-  return parts.length ? parts : [{ type: 'text', text: { content: '' } }]
+  return parts
+}
+
+function richText(nodes: PhrasingContent[], resolveLink: (href: string) => string | null): any[] {
+  const parts = inlineParts(nodes, resolveLink, {}, null)
+  return parts.length ? limitRichText(parts) : [{ type: 'text', text: { content: '' } }]
+}
+
+// Converts sibling Markdown nodes, flattening nodes that produce several blocks.
+function convertBlocks(
+  nodes: Content[],
+  resolveLink: (href: string) => string | null,
+  resolveImage: (url: string) => string | null
+): NotionBlock[] {
+  const blocks: NotionBlock[] = []
+  for (const node of nodes) {
+    const converted = convertNode(node, resolveLink, resolveImage)
+    if (converted) blocks.push(...(Array.isArray(converted) ? converted : [converted]))
+  }
+  return blocks
+}
+
+// Splits a container (list item, blockquote) into the text of its first
+// paragraph and the blocks that follow it, which become nested children.
+function leadAndChildren(
+  children: Content[],
+  resolveLink: (href: string) => string | null,
+  resolveImage: (url: string) => string | null
+): { richText: any[]; children: NotionBlock[] } {
+  const [first, ...rest] = children
+  if (first?.type === 'paragraph' && !standaloneImage(first)) {
+    return {
+      richText: richText((first as Paragraph).children as PhrasingContent[], resolveLink),
+      children: convertBlocks(rest, resolveLink, resolveImage),
+    }
+  }
+  return { richText: richText([], resolveLink), children: convertBlocks(children, resolveLink, resolveImage) }
 }
 
 function convertNode(
@@ -233,31 +329,33 @@ function convertNode(
     }
 
     case 'blockquote': {
-      const texts: PhrasingContent[] = []
-      for (const child of node.children as BlockContent[]) {
-        if (child.type === 'paragraph') texts.push(...(child as Paragraph).children as PhrasingContent[])
-      }
+      // The first paragraph is the quote text; following paragraphs, lists
+      // and code blocks are nested inside the quote.
+      const { richText: text, children } = leadAndChildren(node.children as Content[], resolveLink, resolveImage)
       return {
         type: 'quote',
-        quote: { rich_text: richText(texts, resolveLink) },
+        quote: { rich_text: text, ...(children.length ? { children } : {}) },
       } as NotionBlock
     }
 
     case 'list': {
       const list = node as List
-      const blocks: NotionBlock[] = []
-      for (const item of list.children as ListItem[]) {
-        const texts: PhrasingContent[] = []
-        for (const child of item.children as BlockContent[]) {
-          if (child.type === 'paragraph') texts.push(...(child as Paragraph).children as PhrasingContent[])
-        }
-        const blockType = list.ordered ? 'numbered_list_item' : 'bulleted_list_item'
-        blocks.push({
+      return (list.children as ListItem[]).map((item) => {
+        // The first paragraph is the item text; nested lists, code blocks,
+        // quotes and further paragraphs become children of the item.
+        const { richText: text, children } = leadAndChildren(item.children as Content[], resolveLink, resolveImage)
+        // GFM task list items ("- [ ]" / "- [x]") become to-do blocks.
+        const isTask = typeof item.checked === 'boolean'
+        const blockType = isTask ? 'to_do' : list.ordered ? 'numbered_list_item' : 'bulleted_list_item'
+        return {
           type: blockType,
-          [blockType]: { rich_text: richText(texts, resolveLink) },
-        } as unknown as NotionBlock)
-      }
-      return blocks
+          [blockType]: {
+            rich_text: text,
+            ...(isTask ? { checked: item.checked } : {}),
+            ...(children.length ? { children } : {}),
+          },
+        } as unknown as NotionBlock
+      })
     }
 
     case 'table': {
